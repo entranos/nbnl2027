@@ -23,7 +23,6 @@ body {
   /* background-size: 8px 8px; */
 }
 
-
 #main-container {
   width: 1300px;
   min-height: 100vh;
@@ -317,6 +316,99 @@ body {
 
   /* Equal padding on all sides */
   padding: 0.5rem 1rem;
+  border-radius: 0 0 6px 6px;
+}
+
+.version-label.has-changelog {
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+.version-label.has-changelog:hover {
+  background-color: #777;
+}
+
+/* Changelog popup */
+#changelog-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.35);
+  z-index: 10000;
+  align-items: center;
+  justify-content: center;
+}
+#changelog-backdrop.open {
+  display: flex;
+}
+#changelog-popup {
+  background: #fff;
+  width: 480px;
+  max-height: 70vh;
+  border-radius: 2px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+#changelog-popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px 14px;
+  border-bottom: 1px solid #e8e8e8;
+}
+#changelog-popup-header h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #111;
+}
+#changelog-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #888;
+  font-size: 20px;
+  line-height: 1;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 2px;
+  transition: color 0.15s, background 0.15s;
+}
+#changelog-close:hover {
+  color: #111;
+  background: #f0f0f0;
+}
+#changelog-body {
+  overflow-y: auto;
+  padding: 8px 0;
+}
+.changelog-entry {
+  padding: 14px 24px;
+  border-bottom: 1px solid #f0f0f0;
+}
+.changelog-entry:last-child {
+  border-bottom: none;
+}
+.changelog-entry-date {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #999;
+  margin-bottom: 4px;
+}
+.changelog-entry-note {
+  font-size: 13px;
+  color: #222;
+  line-height: 1.5;
 }
 
 #liner {
@@ -1228,7 +1320,6 @@ body {
   padding: 8px 12px;
   border-radius: 6px;
   margin: 0;
-  text-align: center;
   display: flex;
   align-items: center;
   justify-content: center;
