@@ -130,8 +130,41 @@ let sankeyConfigs = []
 
 // Storage for multiple sankey diagram data
 let sankeyDataLibraries = {}
+// Exposed for shared modules (e.g. dashboardBuilder.js) that read the sankey dataset
+window.sankeyDataLibraries = sankeyDataLibraries
 let activeDiagramId = null
 let diagramConfigs = []
+
+// Build a map of { diagramId -> Set<scenarioId> } from all loaded diagram libraries
+function buildDiagramScenarioIndex() {
+  const index = {}
+  const allScenarioIds = new Set((viewerConfig?.scenarios || []).map(s => s.id))
+  const years = (viewerConfig?.years || []).map(y => y.id)
+
+  Object.entries(sankeyDataLibraries).forEach(([diagramId, rawData]) => {
+    const found = new Set()
+    // Check links in all scopes (system, electricity, etc.)
+    const scopeLinks = rawData.links || {}
+    Object.values(scopeLinks).forEach(links => {
+      if (!Array.isArray(links)) return
+      links.forEach(link => {
+        Object.keys(link).forEach(col => {
+          // Column format: "{year}_{scenarioId}"
+          years.forEach(year => {
+            if (col.startsWith(year + '_')) {
+              const scenarioId = col.slice((year + '_').length)
+              if (allScenarioIds.has(scenarioId)) {
+                found.add(scenarioId)
+              }
+            }
+          })
+        })
+      })
+    })
+    index[diagramId] = found
+  })
+  window.diagramScenarioIndex = index
+}
 
 // Function to switch between sankey diagrams
 function switchDiagram(diagramId) {
@@ -144,6 +177,7 @@ function switchDiagram(diagramId) {
 
   activeDiagramId = diagramId
   window.activeDiagramId = diagramId
+  if (window.DashboardBuilder) window.DashboardBuilder.invalidate()
   const rawSankeyData = sankeyDataLibraries[diagramId]
 
   // Clear existing sankey
@@ -267,6 +301,8 @@ function initTool () {
         // Make diagramConfigs globally available for buttons
         window.diagramConfigs = diagramConfigs
         window.activeDiagramId = activeDiagramId
+
+        buildDiagramScenarioIndex()
       })
     } else {
       // Fallback to single file loading (original behavior)
@@ -330,7 +366,7 @@ function loadSankeyDiagram(rawSankeyData) {
     if (typeof updateScenarioAvailability === 'function') {
       // Get the config object from the first sankey config
       const firstConfig = sankeyConfigs.length > 0 ? sankeyConfigs[0] : {}
-      updateScenarioAvailability({ scenarios: config.scenarios })
+      updateScenarioAvailability({ scenarios: firstConfig.scenarios })
     }
   }, 100)
 }
@@ -395,7 +431,7 @@ function generateSankeyLibrary (workbook) {
    const usernameInput = document.createElement('input');
    usernameInput.type = 'text';
    usernameInput.name = 'username';
-   usernameInput.value = 'NBNL2027';
+   usernameInput.value = 'SNM';
    usernameInput.autocomplete = 'username';
    usernameInput.style.display = 'none';
    usernameInput.setAttribute('aria-hidden', 'true');
@@ -449,11 +485,11 @@ passphraseWrapper.appendChild(passphraseInput);
      const excelData = {};
      const csvData = {}; // Store CSV data separately
      const jsonData = {}; // Store JSON data separately
+     const dashboardTemplates = []; // Dashboard builder templates (private/dashboard_sjablonen/)
 
      const excelExtensions = /\.(xls[xmb]?|ods|xml)$/i;
      const csvExtensions = /\.(csv|tsv|txt)$/i;
      const jsonExtensions = /\.json$/i;
-     const yamlExtensions = /\.ya?ml$/i;
 
      for (const fileName of Object.keys(zipContent.files)) {
        const zipFile = zipContent.files[fileName];
@@ -488,21 +524,16 @@ passphraseWrapper.appendChild(passphraseInput);
            // Handle JSON files
            try {
              const jsonText = await zipFile.async('text');
+             // Templates keep their own list: jsonData is keyed by bare file name, so a
+             // template could otherwise overwrite a real config file of the same name.
+             if (/(^|\/)dashboard_sjablonen\//i.test(fileName)) {
+               dashboardTemplates.push({ file: fileName.split('/').pop(), config: JSON.parse(jsonText) });
+               continue;
+             }
              const baseName = fileName.split('/').pop().replace(/\.[^.]+$/, '');
              jsonData[baseName] = JSON.parse(jsonText);
            } catch (err) {
              console.warn(`Failed to parse JSON file "${fileName}":`, err);
-           }
-         } else if (yamlExtensions.test(fileName)) {
-           // Handle YAML files (stored as raw text for changelog etc.)
-           try {
-             const yamlText = await zipFile.async('text');
-             const baseName = fileName.split('/').pop().replace(/\.[^.]+$/, '');
-             if (baseName === 'changelog') {
-               window.changelogYamlText = yamlText;
-             }
-           } catch (err) {
-             console.warn(`Failed to read YAML file "${fileName}":`, err);
            }
          }
        }
@@ -510,7 +541,10 @@ passphraseWrapper.appendChild(passphraseInput);
 
      console.log('Extracted Excel Data:', excelData);
      console.log('Extracted CSV Data:', csvData);
+     // Expose the extracted CSVs so shared modules can read their own files
+     window.viewerZipCSV = csvData;
      console.log('Extracted JSON Data:', jsonData);
+     window.viewerZipDashboardTemplates = dashboardTemplates;
      // Hide the login section and show the viewer content
      (function hideLoginShowViewer() {
        const loginSection = document.getElementById('loginSection');
@@ -577,7 +611,7 @@ passphraseWrapper.appendChild(passphraseInput);
     }
 
      // Pass CSV data to capacity visualization module if available
-     if (viewerConfig?.viewer?.hasCapacityVisualization !== false && (csvData['processed_capacities'] || csvData['etm_production_parameters_mapping']) && typeof window.setCapacityZipData === 'function') {
+     if ((csvData['processed_capacities'] || csvData['etm_production_parameters_mapping']) && typeof window.setCapacityZipData === 'function') {
        window.setCapacityZipData(csvData);
        // Draw capacity visualization after data is loaded
        if (typeof drawCapacityVisualization === 'function') {
@@ -595,8 +629,8 @@ passphraseWrapper.appendChild(passphraseInput);
        };
        console.log('TVKN CSV data stored from zip file');
 
-      // Initialize TVKN Analysis now that data is available (if enabled in viewer config)
-      if (typeof window.initTVKNAnalysis === 'function' && viewerConfig?.viewer?.hasServiceDemandSection !== false) {
+      // Initialize TVKN Analysis now that data is available
+      if (typeof window.initTVKNAnalysis === 'function') {
         window.initTVKNAnalysis();
       }
      }
@@ -614,9 +648,7 @@ passphraseWrapper.appendChild(passphraseInput);
     //  dataset_WLO3 = excelData['data_watervaldiagram_WLO3']
     //  dataset_WLO4 = excelData['data_watervaldiagram_WLO4']
 
-     if (viewerConfig?.viewer?.hasWaterfall !== false && typeof initWaterfallDiagram === 'function') {
-       initWaterfallDiagram()
-     }
+     initWaterfallDiagram()
 
     //  alert('Excel data extracted — check the console!');
 
@@ -651,6 +683,8 @@ passphraseWrapper.appendChild(passphraseInput);
        // Make diagramConfigs globally available for buttons
        window.diagramConfigs = diagramConfigs
        window.activeDiagramId = activeDiagramId
+
+       buildDiagramScenarioIndex()
 
        // Process the default diagram
        sankeyConfigs.forEach(element => {
