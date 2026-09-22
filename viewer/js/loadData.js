@@ -80,7 +80,7 @@ async function decryptData(encryptedData, key, iv) {
 async function decryptZipFile(passphrase) {
   try {
     // Fetch the encrypted file
-    const response = await fetch('public/ds17092026nbnl2027.enc.json');
+    const response = await fetch('public/ds22092026nbnl2027.enc.json');
     if (!response.ok) {
       throw new Error(`Failed to fetch encrypted file: ${response.status}`);
     }
@@ -130,6 +130,8 @@ let sankeyConfigs = []
 
 // Storage for multiple sankey diagram data
 let sankeyDataLibraries = {}
+// Exposed for shared modules (e.g. dashboardBuilder.js) that read the sankey dataset
+window.sankeyDataLibraries = sankeyDataLibraries
 let activeDiagramId = null
 let diagramConfigs = []
 
@@ -144,6 +146,7 @@ function switchDiagram(diagramId) {
 
   activeDiagramId = diagramId
   window.activeDiagramId = diagramId
+  if (window.DashboardBuilder) window.DashboardBuilder.invalidate()
   const rawSankeyData = sankeyDataLibraries[diagramId]
 
   // Clear existing sankey
@@ -449,6 +452,7 @@ passphraseWrapper.appendChild(passphraseInput);
      const excelData = {};
      const csvData = {}; // Store CSV data separately
      const jsonData = {}; // Store JSON data separately
+     const dashboardTemplates = []; // Dashboard builder templates (private/dashboard_sjablonen/)
 
      const excelExtensions = /\.(xls[xmb]?|ods|xml)$/i;
      const csvExtensions = /\.(csv|tsv|txt)$/i;
@@ -488,6 +492,12 @@ passphraseWrapper.appendChild(passphraseInput);
            // Handle JSON files
            try {
              const jsonText = await zipFile.async('text');
+             // Templates keep their own list: jsonData is keyed by bare file name, so a
+             // template could otherwise overwrite a real config file of the same name.
+             if (/(^|\/)dashboard_sjablonen\//i.test(fileName)) {
+               dashboardTemplates.push({ file: fileName.split('/').pop(), config: JSON.parse(jsonText) });
+               continue;
+             }
              const baseName = fileName.split('/').pop().replace(/\.[^.]+$/, '');
              jsonData[baseName] = JSON.parse(jsonText);
            } catch (err) {
@@ -510,7 +520,10 @@ passphraseWrapper.appendChild(passphraseInput);
 
      console.log('Extracted Excel Data:', excelData);
      console.log('Extracted CSV Data:', csvData);
+     // Expose the extracted CSVs so shared modules can read their own files
+     window.viewerZipCSV = csvData;
      console.log('Extracted JSON Data:', jsonData);
+     window.viewerZipDashboardTemplates = dashboardTemplates;
      // Hide the login section and show the viewer content
      (function hideLoginShowViewer() {
        const loginSection = document.getElementById('loginSection');
