@@ -80,7 +80,7 @@ async function decryptData(encryptedData, key, iv) {
 async function decryptZipFile(passphrase) {
   try {
     // Fetch the encrypted file
-    const response = await fetch('public/ds16112026nbnl2027.enc.json');
+    const response = await fetch('public/ds19112026nbnl2027.enc.json');
     if (!response.ok) {
       throw new Error(`Failed to fetch encrypted file: ${response.status}`);
     }
@@ -119,7 +119,7 @@ async function decryptZipFile(passphrase) {
     } else if (error.message.includes('fetch')) {
       throw new Error('Kan encrypted bestand niet laden');
     } else {
-      throw new Error(`Decryption failed: ${error.message}`);
+      throw new Error(`Ontsleutelen mislukt: ${error.message}`);
     }
   }
 }
@@ -134,6 +134,37 @@ let sankeyDataLibraries = {}
 window.sankeyDataLibraries = sankeyDataLibraries
 let activeDiagramId = null
 let diagramConfigs = []
+
+// Build a map of { diagramId -> Set<scenarioId> } from all loaded diagram libraries
+function buildDiagramScenarioIndex() {
+  const index = {}
+  const allScenarioIds = new Set((viewerConfig?.scenarios || []).map(s => s.id))
+  const years = (viewerConfig?.years || []).map(y => y.id)
+
+  Object.entries(sankeyDataLibraries).forEach(([diagramId, rawData]) => {
+    const found = new Set()
+    // Check links in all scopes (system, electricity, etc.)
+    const scopeLinks = rawData.links || {}
+    Object.values(scopeLinks).forEach(links => {
+      if (!Array.isArray(links)) return
+      links.forEach(link => {
+        Object.keys(link).forEach(col => {
+          // Column format: "{year}_{scenarioId}"
+          years.forEach(year => {
+            if (col.startsWith(year + '_')) {
+              const scenarioId = col.slice((year + '_').length)
+              if (allScenarioIds.has(scenarioId)) {
+                found.add(scenarioId)
+              }
+            }
+          })
+        })
+      })
+    })
+    index[diagramId] = found
+  })
+  window.diagramScenarioIndex = index
+}
 
 // Function to switch between sankey diagrams
 function switchDiagram(diagramId) {
@@ -235,6 +266,11 @@ function initTool () {
   // console.log(sankeyConfigs)
 
   if (dataSource == 'development') {
+    // Scenario annotation texts shown under the sankey (js/scenarioAnnotations.js)
+    if (typeof window.loadScenarioAnnotations === 'function') {
+      window.loadScenarioAnnotations('private/scenario_annotations.json')
+    }
+
     // Check if viewerConfig has multiple sankey diagrams configured
     if (viewerConfig && viewerConfig.sankeyDiagrams && viewerConfig.sankeyDiagrams.length > 0) {
       diagramConfigs = viewerConfig.sankeyDiagrams
@@ -270,6 +306,8 @@ function initTool () {
         // Make diagramConfigs globally available for buttons
         window.diagramConfigs = diagramConfigs
         window.activeDiagramId = activeDiagramId
+
+        buildDiagramScenarioIndex()
       })
     } else {
       // Fallback to single file loading (original behavior)
@@ -333,7 +371,7 @@ function loadSankeyDiagram(rawSankeyData) {
     if (typeof updateScenarioAvailability === 'function') {
       // Get the config object from the first sankey config
       const firstConfig = sankeyConfigs.length > 0 ? sankeyConfigs[0] : {}
-      updateScenarioAvailability({ scenarios: config.scenarios })
+      updateScenarioAvailability({ scenarios: firstConfig.scenarios })
     }
   }, 100)
 }
@@ -398,7 +436,7 @@ function generateSankeyLibrary (workbook) {
    const usernameInput = document.createElement('input');
    usernameInput.type = 'text';
    usernameInput.name = 'username';
-   usernameInput.value = 'NBNL2027';
+   usernameInput.value = 'NBNL';
    usernameInput.autocomplete = 'username';
    usernameInput.style.display = 'none';
    usernameInput.setAttribute('aria-hidden', 'true');
@@ -564,6 +602,11 @@ passphraseWrapper.appendChild(passphraseInput);
        window.setCategoryConfigFromZip(jsonData['categoryConfig']);
      }
 
+     // Scenario annotation texts shown under the sankey (js/scenarioAnnotations.js)
+     if (typeof window.setScenarioAnnotations === 'function') {
+       window.setScenarioAnnotations(jsonData['scenario_annotations'] || {});
+     }
+
     // Set viewerConfig from ZIP if available (for drawSelectionButtons.js)
     if (jsonData['viewer-config']) {
       viewerConfig = jsonData['viewer-config'];
@@ -590,7 +633,7 @@ passphraseWrapper.appendChild(passphraseInput);
     }
 
      // Pass CSV data to capacity visualization module if available
-     if (viewerConfig?.viewer?.hasCapacityVisualization !== false && (csvData['processed_capacities'] || csvData['etm_production_parameters_mapping']) && typeof window.setCapacityZipData === 'function') {
+     if ((csvData['processed_capacities'] || csvData['etm_production_parameters_mapping']) && typeof window.setCapacityZipData === 'function') {
        window.setCapacityZipData(csvData);
        // Draw capacity visualization after data is loaded
        if (typeof drawCapacityVisualization === 'function') {
@@ -675,6 +718,8 @@ passphraseWrapper.appendChild(passphraseInput);
        window.diagramConfigs = diagramConfigs
        window.activeDiagramId = activeDiagramId
 
+       buildDiagramScenarioIndex()
+
        // Process the default diagram
        sankeyConfigs.forEach(element => {
          let configString = JSON.stringify(element)
@@ -739,7 +784,7 @@ passphraseWrapper.appendChild(passphraseInput);
         // Set the inner HTML with the desired text and link
         document.getElementById('loadFileDialog').innerHTML = `
           <div style="max-width: 500px; word-wrap: break-word;line-height: 35px;font-size:15px; ">
-              <strong style="line-height: 40px; font-size:28px;font-weight:300;">Error</strong> <br><br>De identificatienummers van het opgegeven databestand (<strong>${settings[0].projectID}_${settings[0].productID}_${settings[0].versionID}</strong>) en het ingeladen visualisatiescript (<strong>${projectID}_${productID}_${versionID}</strong>) komen niet overeen.<br><br>Gebruik de onderstaande link om naar het script te gaan dat bij het opgegeven bestand hoort en probeer het opnieuw.&nbsp
+              <strong style="line-height: 40px; font-size:28px;font-weight:300;">Fout</strong> <br><br>De identificatienummers van het opgegeven databestand (<strong>${settings[0].projectID}_${settings[0].productID}_${settings[0].versionID}</strong>) en het ingeladen visualisatiescript (<strong>${projectID}_${productID}_${versionID}</strong>) komen niet overeen.<br><br>Gebruik de onderstaande link om naar het script te gaan dat bij het opgegeven bestand hoort en probeer het opnieuw.&nbsp
               <br><br>
               <a href="https://rvo-nl.github.io/visualisaties/${settings[0].projectID}/${settings[0].productID}/${settings[0].versionID}" style="color: blue; text-decoration: underline;">
                   https://rvo-nl.github.io/visualisaties/${settings[0].projectID}/${settings[0].productID}/${settings[0].versionID}
