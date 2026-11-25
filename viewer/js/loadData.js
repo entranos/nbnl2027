@@ -432,7 +432,9 @@ function generateSankeyLibrary (workbook) {
    const buttonGroup = document.getElementById('buttonGroup');
    const statusMessage = document.getElementById('statusMessage');
 
-   // Create hidden username field for browser password management
+   // Create hidden username field for browser password management.
+   // The value is set from FILE_PREFIX by private/encrypt-and-deploy.command on
+   // every encryption run -- change FILE_PREFIX there, not this line.
    const usernameInput = document.createElement('input');
    usernameInput.type = 'text';
    usernameInput.name = 'username';
